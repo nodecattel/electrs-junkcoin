@@ -20,7 +20,7 @@ arraydeque = "0.5.1"
 arrayref = "0.3.6"
 base64 = "0.22"
 bincode = "1.3.1"
-bitcoin = { git = "https://github.com/cf/rust-dogecoin.git", rev = "f51d00173d5df4bd365aa3f7b8fe139af51245ab", features = [ "serde" ] }
+bitcoin = { git = "https://github.com/cf/rust-dogecoin.git", rev = "fa744894a10f6894e4be6c6babcd8be3529b6c5c", features = [ "serde" ] }
 clap = "2.33.3"
 crossbeam-channel = "0.5.0"
 dirs = "5.0.1"
