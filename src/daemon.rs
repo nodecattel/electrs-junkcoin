@@ -593,16 +593,11 @@ impl Daemon {
         let all_heights: Vec<usize> = (0..=tip_height).collect();
         let chunk_size = 100_000;
         let mut result = vec![];
-        let mut ctr = 0;
         for heights in all_heights.chunks(chunk_size) {
             trace!("downloading {} block headers", heights.len());
             let mut headers = self.getblockheaders(&heights)?;
             assert!(headers.len() == heights.len());
             result.append(&mut headers);
-            ctr+=1;
-            if ctr % 10 == 0 {
-                std::fs::write(format!("/home/ubuntu/doge-electrs-v2/electrs-doge/dbg/headers_{}.json",ctr), bincode::serialize(&result).unwrap()).expect("Unable to write file");
-            }
         }
         std::fs::write("/home/ubuntu/doge-electrs-v2/electrs-doge/dbg/headers_final.json", bincode::serialize(&result).unwrap()).expect("Unable to write file");
 
