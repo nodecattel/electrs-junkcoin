@@ -30,6 +30,7 @@ pub fn start_fetcher(
     daemon: &Daemon,
     new_headers: Vec<HeaderEntry>,
 ) -> Result<Fetcher<Vec<BlockEntry>>> {
+    println!("start_fetcher");
     let fetcher = match from {
         FetchFrom::Bitcoind => bitcoind_fetcher,
         FetchFrom::BlkFiles => blkfiles_fetcher,
@@ -175,6 +176,7 @@ fn blkfiles_reader(blk_files: Vec<PathBuf>) -> Fetcher<Vec<u8>> {
 }
 
 fn blkfiles_parser(blobs: Fetcher<Vec<u8>>, magic: u32) -> Fetcher<Vec<SizedBlock>> {
+    println!("blkfiles_parser");
     let chan = SyncChannel::new(1);
     let sender = chan.sender();
     println!("spawned parser");
