@@ -75,6 +75,7 @@ impl Store {
         } else {
             HeaderList::empty()
         };
+        println!("headers.len() = {}", headers.len());
 
         Store {
             txstore_db,

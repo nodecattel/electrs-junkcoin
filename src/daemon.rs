@@ -590,7 +590,7 @@ impl Daemon {
             .expect("missing height")
             .as_u64()
             .expect("non-numeric height") as usize;
-        let existing = std::fs::read("/home/ubuntu/doge-electrs-v2/electrs-doge/dbg/headers_final.json").unwrap();
+        let existing = std::fs::read("/home/ubuntu/dbg-headers/headers_final.json").unwrap();
         let mut result: Vec<BlockHeader> = bincode::deserialize(&existing).unwrap();
         let existing_height = result.len();
         if existing_height == tip_height {
