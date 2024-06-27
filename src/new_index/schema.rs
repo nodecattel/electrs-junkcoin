@@ -230,7 +230,9 @@ impl Indexer {
     }
 
     fn headers_to_index(&self, new_headers: &[HeaderEntry]) -> Vec<HeaderEntry> {
+        println!("start header_to_index");
         let indexed_blockhashes = self.store.indexed_blockhashes.read().unwrap();
+        println!("header_to_index_b");
         new_headers
             .iter()
             .filter(|e| !indexed_blockhashes.contains(e.hash()))
@@ -239,13 +241,18 @@ impl Indexer {
     }
 
     fn start_auto_compactions(&self, db: &DB) {
+        println!("auto_0");
+
         let key = b"F".to_vec();
         if db.get(&key).is_none() {
             db.full_compaction();
             db.put_sync(&key, b"");
+            println!("auto_a");
             assert!(db.get(&key).is_some());
+            println!("auto_b");
         }
         db.enable_auto_compaction();
+        println!("auto_c");
     }
 
     fn get_new_headers(&self, daemon: &Daemon, tip: &BlockHash) -> Result<Vec<HeaderEntry>> {
@@ -272,8 +279,9 @@ impl Indexer {
         );
         start_fetcher(self.from, &daemon, to_add)?.map(|blocks| self.add(&blocks));
         self.start_auto_compactions(&self.store.txstore_db);
-
+        println!("after auto");
         let to_index = self.headers_to_index(&new_headers);
+        println!("after to_index");
         debug!(
             "indexing history from {} blocks using {:?}",
             to_index.len(),
@@ -288,21 +296,24 @@ impl Indexer {
             self.store.history_db.flush();
             self.flush = DBFlush::Enable;
         }
-
+        println!("after_flush");
         // update the synced tip *after* the new data is flushed to disk
         debug!("updating synced tip to {:?}", tip);
         self.store.txstore_db.put_sync(b"t", &serialize(&tip));
 
+        println!("before flush headers");
         let mut headers = self.store.indexed_headers.write().unwrap();
         headers.apply(new_headers);
+        println!("before check tip");
         assert_eq!(tip, *headers.tip());
+        println!("after check tip");
 
         if let FetchFrom::BlkFiles = self.from {
             self.from = FetchFrom::Bitcoind;
         }
 
         self.tip_metric.set(headers.len() as i64 - 1);
-
+println!("at-tip");
         Ok(tip)
     }
 

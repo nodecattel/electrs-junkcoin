@@ -76,11 +76,13 @@ fn run_server(config: Arc<Config>) -> Result<()> {
         precache::precache(&chain, precache_scripthashes);
     }
 
+    println!("before created_mempool");
     let mempool = Arc::new(RwLock::new(Mempool::new(
         Arc::clone(&chain),
         &metrics,
         Arc::clone(&config),
     )));
+    println!("after created_mempool");
     loop {
         match Mempool::update(&mempool, &daemon) {
             Ok(_) => break,
@@ -115,6 +117,7 @@ fn run_server(config: Arc<Config>) -> Result<()> {
         "electrs_main_loop_count",
         "count of iterations of electrs main loop each 5 seconds or after interrupts",
     ));
+    println!("before loop");
 
     loop {
 

@@ -114,10 +114,10 @@ fn blkfiles_fetcher(
 
     let chan = SyncChannel::new(1);
     let sender = chan.sender();
-
+    println!("spawned chan and sender");
     let mut entry_map: HashMap<BlockHash, HeaderEntry> =
         new_headers.into_iter().map(|h| (*h.hash(), h)).collect();
-
+println!("created entry_map");
     let parser = blkfiles_parser(blkfiles_reader(blk_files), magic);
     Ok(Fetcher::from(
         chan.into_receiver(),
