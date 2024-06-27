@@ -590,21 +590,15 @@ impl Daemon {
             .expect("missing height")
             .as_u64()
             .expect("non-numeric height") as usize;
-        let existing = std::fs::read("/home/ubuntu/dbg-headers/headers_final.json").unwrap();
-        let mut result: Vec<BlockHeader> = bincode::deserialize(&existing).unwrap();
-        let existing_height = result.len();
-        if existing_height == tip_height {
-            return Ok(result);
-        }
-        let all_heights: Vec<usize> = (existing_height..=tip_height).collect();
+        let all_heights: Vec<usize> = (0..=tip_height).collect();
         let chunk_size = 100_000;
+        let mut result = vec![];
         for heights in all_heights.chunks(chunk_size) {
             trace!("downloading {} block headers", heights.len());
             let mut headers = self.getblockheaders(&heights)?;
             assert!(headers.len() == heights.len());
             result.append(&mut headers);
         }
-        //std::fs::write("/home/ubuntu/doge-electrs-v2/electrs-doge/dbg/headers_final.json", bincode::serialize(&result).unwrap()).expect("Unable to write file");
 
         let mut blockhash = *DEFAULT_BLOCKHASH;
         for header in &result {
