@@ -107,8 +107,10 @@ fn blkfiles_fetcher(
     daemon: &Daemon,
     new_headers: Vec<HeaderEntry>,
 ) -> Result<Fetcher<Vec<BlockEntry>>> {
+    println!("spawned fetcher");
     let magic = daemon.magic();
     let blk_files = daemon.list_blk_files()?;
+    println!("listed blocks files");
 
     let chan = SyncChannel::new(1);
     let sender = chan.sender();
@@ -120,11 +122,14 @@ fn blkfiles_fetcher(
     Ok(Fetcher::from(
         chan.into_receiver(),
         spawn_thread("blkfiles_fetcher", move || {
+            println!("inside fetcher");
             parser.map(|sizedblocks| {
+                println!("inside map");
                 let block_entries: Vec<BlockEntry> = sizedblocks
                     .into_iter()
                     .filter_map(|(block, size)| {
                         let blockhash = block.block_hash();
+                        println!("blockhash: {:?}", blockhash);
                         entry_map
                             .remove(&blockhash)
                             .map(|entry| BlockEntry { block, entry, size })
