@@ -130,7 +130,6 @@ println!("created entry_map");
                     .into_iter()
                     .filter_map(|(block, size)| {
                         let blockhash = block.block_hash();
-                        println!("blockhash: {:?}", blockhash);
                         entry_map
                             .remove(&blockhash)
                             .map(|entry| BlockEntry { block, entry, size })
