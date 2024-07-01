@@ -14,7 +14,7 @@ pub use {
     },
 };
 
-use bitcoin::{blockdata::constants::genesis_block, hashes::Hash};
+use bitcoin::hashes::Hash;
 pub use bitcoin::network::Network as BNetwork;
 
 #[cfg(not(feature = "liquid"))]
