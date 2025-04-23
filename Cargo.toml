@@ -20,7 +20,7 @@ arraydeque = "0.5.1"
 arrayref = "0.3.6"
 base64 = "0.22"
 bincode = "1.3.1"
-bitcoin = { git = "https://github.com/hieujson/rust-junkcoin", rev = "ec994399b4b8b5ac3901d3a4748f0e31922f9892", features = [ "serde" ] }
+bitcoin = { git = "https://github.com/Junkcoin-Foundation/rust-electrs-junkcoin", rev = "f44940cc9a56757e7bcea807440c2f9672537592", features = [ "serde" ] }
 clap = "2.33.3"
 crossbeam-channel = "0.5.0"
 dirs = "5.0.1"
@@ -46,7 +46,7 @@ signal-hook = "0.3"
 stderrlog = "0.6"
 hex-literal = "0.4.1"
 sysconf = ">=0.3.4"
-time = { version = "0.3", features = ["formatting"] }
+time = { version = "0.3.35", features = ["formatting"] }
 tiny_http = "0.12.0"
 url = "2.2.0"
 hyper = { version = "0.14", features = ["full"] }
@@ -74,6 +74,7 @@ codegen-units = 1
 [patch.crates-io.electrum-client]
 git = "https://github.com/Blockstream/rust-electrum-client"
 rev = "d3792352992a539afffbe11501d1aff9fd5b919d" # add-peer branch
+time = { version = "0.3.35" }
 
 # not yet published on crates.io
 [patch.crates-io.electrumd]
