@@ -26,6 +26,7 @@ pub struct Config {
     pub blocks_dir: PathBuf,
     pub daemon_rpc_addr: SocketAddr,
     pub cookie: Option<String>,
+    pub auth: Option<String>,
     pub electrum_rpc_addr: SocketAddr,
     pub http_addr: SocketAddr,
     pub http_socket_file: Option<PathBuf>,
@@ -108,6 +109,8 @@ impl Config {
                     .help("JSONRPC authentication cookie ('USER:PASSWORD', default: read from ~/.bitcoin/.cookie)")
                     .takes_value(true),
             )
+            .arg(
+                Arg::with_name("auth").long("auth").help("JSONRPC auth string ( 'USER:PASSWORD' )").takes_value(true))
             .arg(
                 Arg::with_name("network")
                     .long("network")
@@ -360,6 +363,7 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|| daemon_dir.join("blocks"));
         let cookie = m.value_of("cookie").map(|s| s.to_owned());
+        let auth = m.value_of("auth").map(|s| s.to_owned());
 
         let electrum_banner = m.value_of("electrum_banner").map_or_else(
             || format!("Welcome to electrs-esplora {}", ELECTRS_VERSION),
@@ -387,6 +391,7 @@ impl Config {
             blocks_dir,
             daemon_rpc_addr,
             cookie,
+            auth,
             utxos_limit: value_t_or_exit!(m, "utxos_limit", usize),
             electrum_rpc_addr,
             electrum_txs_limit: value_t_or_exit!(m, "electrum_txs_limit", usize),
@@ -421,6 +426,11 @@ impl Config {
     }
 
     pub fn cookie_getter(&self) -> Arc<dyn CookieGetter> {
+        if let Some(ref value) = self.auth {
+            return Arc::new(StaticCookie {
+              value: value.as_bytes().to_vec()
+            });
+          }
         if let Some(ref value) = self.cookie {
             Arc::new(StaticCookie {
                 value: value.as_bytes().to_vec(),

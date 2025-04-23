@@ -1,5 +1,5 @@
 use crate::chain::{
-    address, BlockHash, Network, OutPoint, Script, Sequence, Transaction, TxIn, TxMerkleNode,
+    address, BlockHash, Network, OutPoint, Sequence, Transaction, TxIn, TxMerkleNode,
     TxOut, Txid,
 };
 use crate::config::Config;
@@ -38,6 +38,15 @@ use std::os::unix::fs::FileTypeExt;
 use std::sync::Arc;
 use std::thread;
 use url::form_urlencoded;
+
+use bitcoin::base58;
+use bitcoin::ScriptBuf;
+use bitcoin::hashes::{Hash, hash160};
+use bitcoin::opcodes::all as opcodes;
+
+use hyper::{Client, Uri};
+use serde_json::Value;
+use hyper_tls::HttpsConnector;
 
 const CHAIN_TXS_PER_PAGE: usize = 25;
 const MAX_MEMPOOL_TXS: usize = 50;
@@ -179,7 +188,7 @@ struct TxInValue {
     txid: Txid,
     vout: u32,
     prevout: Option<TxOutValue>,
-    scriptsig: Script,
+    scriptsig: ScriptBuf,
     scriptsig_asm: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     witness: Option<Vec<String>>,
@@ -253,7 +262,7 @@ impl TxInValue {
 
 #[derive(Serialize, Clone)]
 struct TxOutValue {
-    scriptpubkey: Script,
+    scriptpubkey: ScriptBuf,
     scriptpubkey_asm: String,
     scriptpubkey_type: String,
 
@@ -475,6 +484,18 @@ fn prepare_txs(
         .collect()
 }
 
+#[derive(Serialize)]
+struct AccountStats {
+    amount: u64,
+    count: u64,
+    balance: u64,
+}
+
+#[derive(Serialize)]
+struct PriceResponse {
+    usd: f64,
+}
+
 #[tokio::main]
 async fn run_server(config: Arc<Config>, query: Arc<Query>, rx: oneshot::Receiver<()>) {
     let addr = &config.http_addr;
@@ -498,6 +519,7 @@ async fn run_server(config: Arc<Config>, query: Arc<Query>, rx: oneshot::Receive
                     let body = hyper::body::to_bytes(req.into_body()).await?;
 
                     let mut resp = handle_request(method, uri, body, &query, &config)
+                        .await
                         .unwrap_or_else(|err| {
                             warn!("{:?}", err);
                             Response::builder()
@@ -579,7 +601,7 @@ impl Handle {
     }
 }
 
-fn handle_request(
+async fn handle_request(
     method: Method,
     uri: hyper::Uri,
     body: hyper::body::Bytes,
@@ -1126,6 +1148,69 @@ fn handle_request(
             }
         }
 
+        (&Method::GET, Some(&"address"), Some(addr), Some(&"stats"), None, None) => {
+            let script_hash = to_scripthash("address", addr, config.network_type)?;
+            let stats = query.stats(&script_hash[..]);
+            
+            let chain_stats = stats.0;
+            let mempool_stats = stats.1;
+
+            let account_stats = AccountStats {
+                amount: 0,
+                count: (chain_stats.tx_count as u64)
+                    .saturating_add(mempool_stats.tx_count as u64),
+                balance: chain_stats.funded_txo_sum
+                .saturating_sub(chain_stats.spent_txo_sum)
+                .saturating_add(
+                    mempool_stats.funded_txo_sum
+                        .saturating_sub(mempool_stats.spent_txo_sum)
+                ),
+            };
+
+            json_response(account_stats, TTL_SHORT)
+        }
+
+        (&Method::GET, Some(&"last-price"), None, None, None, None) => {
+            // Create an HTTPS connector
+            let https = HttpsConnector::new();
+            let client: Client<_, hyper::Body> = Client::builder().build(https);
+            
+            // Create the URI
+            let uri = Uri::from_static("https://api.nonkyc.io/api/v2/ticker/JKC_USDT");
+            
+            // Make the API call
+            let res = match client.get(uri).await {
+                Ok(response) => response,
+                Err(e) => return Err(HttpError::from(format!("Failed to fetch price data: {}", e)))
+            };
+
+            if !res.status().is_success() {
+                return Err(HttpError::from(format!(
+                    "Price API returned error status: {}", 
+                    res.status()
+                )));
+            }
+
+            // Read the response body
+            let body_bytes = hyper::body::to_bytes(res.into_body()).await
+                .map_err(|_| HttpError::from("Failed to read response body".to_string()))?;
+
+            // Parse the response
+            let price_data: Value = serde_json::from_slice(&body_bytes)
+                .map_err(|_| HttpError::from("Failed to parse price data".to_string()))?;
+
+            // Extract the last_price field
+            let last_price = match price_data.get("last_price") {
+                Some(price) => match price.as_str() {
+                    Some(p) => p.parse::<f64>().unwrap_or(0.0),
+                    None => return Err(HttpError::from("Invalid price format".to_string()))
+                },
+                None => return Err(HttpError::from("Price data not found".to_string()))
+            };
+
+            json_response(PriceResponse { usd: last_price }, 60)  // Cache for 60 seconds
+        },
+
         _ => Err(HttpError::not_found(format!(
             "endpoint does not exist {:?}",
             uri.path()
@@ -1204,24 +1289,78 @@ fn to_scripthash(
 
 fn address_to_scripthash(addr: &str, network: Network) -> Result<FullHash, HttpError> {
     #[cfg(not(feature = "liquid"))]
-    let addr = address::Address::from_str(addr)?;
-    #[cfg(feature = "liquid")]
-    let addr = address::Address::parse_with_params(addr, network.address_params())?;
-
-    #[cfg(not(feature = "liquid"))]
-    let is_expected_net = addr.is_valid_for_network(network.into());
-
-    #[cfg(feature = "liquid")]
-    let is_expected_net = addr.params == network.address_params();
-
-    if !is_expected_net {
-        bail!(HttpError::from("Address on invalid network".to_string()))
+    let decoded = base58::decode_check(addr)
+        .map_err(|_| HttpError::from(format!(
+            "Invalid base58 address: {}. Expected format: {} for P2PKH or {} for P2SH",
+            addr,
+            match network {
+                Network::Testnet => "m/n...",
+                Network::Bitcoin => "7...",
+                _ => "unknown"
+            },
+            "3..."  // P2SH always starts with 3
+        )))?;
+    
+    if decoded.len() != 21 {
+        return Err(HttpError::from(format!(
+            "Invalid address length: {}. Expected 21 bytes after decoding, got {}",
+            addr,
+            decoded.len()
+        )));
     }
 
-    #[cfg(not(feature = "liquid"))]
-    let addr = addr.assume_checked();
+    let version = decoded[0];
+    let pubkey_hash = &decoded[1..];
 
-    Ok(compute_script_hash(&addr.script_pubkey()))
+    // Check version byte matches Junkcoin's network
+    let (is_valid, expected_versions) = match network {
+        Network::Testnet => (
+            version == 111 || version == 5,
+            "111 (m/n) for P2PKH or 5 (3) for P2SH"
+        ),
+        Network::Bitcoin => (
+            version == 16 || version == 5,
+            "16 (7) for P2PKH or 5 (3) for P2SH"
+        ),
+        _ => (false, "unknown network")
+    };
+
+    if !is_valid {
+        return Err(HttpError::from(format!(
+            "Invalid address version {} for network {:?}. Expected versions: {}. \
+            Address: {} starts with wrong version byte.",
+            version,
+            network,
+            expected_versions,
+            addr
+        )));
+    }
+
+    // Create hash160 from slice
+    let hash = hash160::Hash::from_slice(pubkey_hash)
+        .map_err(|_| HttpError::from(format!(
+            "Invalid pubkey/script hash in address: {}. Internal error: wrong hash length",
+            addr
+        )))?;
+
+    // Create script from hash using ScriptBuf builder
+    let script = if version == 111 || version == 16 {  // P2PKH for both networks
+        ScriptBuf::builder()
+            .push_opcode(opcodes::OP_DUP)
+            .push_opcode(opcodes::OP_HASH160)
+            .push_slice(hash.as_byte_array())
+            .push_opcode(opcodes::OP_EQUALVERIFY)
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script()
+    } else {  // P2SH for both networks
+        ScriptBuf::builder()
+            .push_opcode(opcodes::OP_HASH160)
+            .push_slice(hash.as_byte_array())
+            .push_opcode(opcodes::OP_EQUAL)
+            .into_script()
+    };
+
+    Ok(compute_script_hash(&script))
 }
 
 fn parse_scripthash(scripthash: &str) -> Result<FullHash, HttpError> {

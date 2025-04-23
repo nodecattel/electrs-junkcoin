@@ -27,9 +27,30 @@ pub trait ScriptToAddr {
 #[cfg(not(feature = "liquid"))]
 impl ScriptToAddr for bitcoin::Script {
     fn to_address_str(&self, network: Network) -> Option<String> {
-        bitcoin::Address::from_script(self, network.into())
-            .map(|s| s.to_string())
-            .ok()
+        // First get the address type and pubkey/script hash
+        let payload = if self.is_p2pkh() {
+            self.as_bytes().get(3..23).map(|bytes| (111, bytes)) // Version 111 for testnet
+        } else if self.is_p2sh() {
+            self.as_bytes().get(2..22).map(|bytes| (196, bytes)) // Version 196 for testnet P2SH
+        } else {
+            None
+        };
+
+        // Then encode with proper version byte based on network
+        payload.map(|(mut version, hash)| {
+            // Override version for mainnet
+            if network == Network::Bitcoin {
+                version = if self.is_p2pkh() { 
+                    16  // Version 16 for mainnet P2PKH (prefix '7')
+                } else {
+                    5   // Version 5 for mainnet P2SH (prefix '3')
+                };
+            }
+            
+            let mut data = vec![version];
+            data.extend_from_slice(hash);
+            bitcoin::base58::encode_check(&data)
+        })
     }
 }
 #[cfg(feature = "liquid")]
